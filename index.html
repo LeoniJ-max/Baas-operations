@@ -233,15 +233,18 @@ body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;font-siz
   </div>
 
   <div class="footer">
-    <div class="savest" id="saveSt">Connected to Brain</div>
-    <button class="savebtn" id="saveBtn" onclick="save()">Save to Brain</button>
+    <div class="savest" id="saveSt">Ready</div>
+    <div style="display:flex;gap:8px;">
+      <button class="savebtn" id="syncBtn" onclick="syncBrain()" style="background:var(--pur);color:#fff;">Sync to Brain</button>
+      <button class="savebtn" id="saveBtn" onclick="save()">Save</button>
+    </div>
   </div>
 </div>
 
 <script>
 const PROJECT_ID = 'proj_Rv3aAAu49zkuEmkOhAlhLQ';
 const DOC_ID     = 'doc_wHbr7d396DWCz-pECowXWQ';
-const SESSION_ID = 'sess_4GP0cn2_q5vUcc5oU_wFsQ';
+const SESSION_ID = 'sess_NAf-lRrr-TFGowKGN01dKg';
 const API        = 'https://api.anthropic.com/v1/messages';
 const MODEL      = 'claude-sonnet-4-20250514';
 const MCP        = [{type:'url',url:'https://brain.thebaascompany.com/ai/mcp',name:'the-brain'}];
@@ -284,23 +287,12 @@ function wkLabel(k){
 }
 
 // ── LOAD ────────────────────────────────────────────────────
-async function load(){
-  setLT('Reading Brain...');
-  try {
-    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:MODEL,max_tokens:2000,
-        system:'Return ONLY the raw JSON object from inside the ```json...``` block. No explanation, no fences.',
-        messages:[{role:'user',content:`Fetch document ${DOC_ID} from Brain Area ${PROJECT_ID} and return only the JSON block.`}],
-        mcp_servers:MCP})});
-    const d=await r.json();
-    const tb=d.content?.find(b=>b.type==='text');
-    if(tb?.text){
-      try{
-        let raw=tb.text.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'').trim();
-        const si=raw.indexOf('{'); if(si>0) raw=raw.slice(si);
-        S=JSON.parse(raw);
-      }catch(e){S=dflt();}
-    }else{S=dflt();}
+function load(){
+  setLT('Loading...');
+  try{
+    const saved=localStorage.getItem('baas_ops_state');
+    if(saved) S=JSON.parse(saved);
+    else S=dflt();
   }catch(e){S=dflt();}
   ensureWeeks();
   render();
@@ -665,20 +657,38 @@ function askCoS(){
 }
 
 // ── SAVE ─────────────────────────────────────────────────────
-async function save(){
+function save(){
   const btn=document.getElementById('saveBtn'),st=document.getElementById('saveSt');
-  btn.disabled=true; st.className='savest saving'; st.textContent='Saving to Brain...';
   S.last_updated=NOW.toISOString().split('T')[0];
-  const content=`# Board State — Live\n# The BaaS Company | Leoni Janssen\n# Last updated: ${S.last_updated}\n# Schema version: 3.0\n# Rhythm is stored per-week inside each week object.\n\n\`\`\`json\n${JSON.stringify(S,null,2)}\n\`\`\``;
   try{
-    await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:MODEL,max_tokens:400,
-        system:'You are a Brain document update agent. Use the Brain MCP update_document tool to update the specified document with the exact text content provided. Reply with just "SAVED".',
-        messages:[{role:'user',content:`Update document ${DOC_ID} in project ${PROJECT_ID} using session ${SESSION_ID} with this exact content:\n\n${content}`}],
-        mcp_servers:MCP})});
+    localStorage.setItem('baas_ops_state',JSON.stringify(S));
     st.className='savest saved';
     st.textContent=`Saved · ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
-  }catch(e){st.className='savest err';st.textContent='Save failed';}
+  }catch(e){
+    st.className='savest err';
+    st.textContent='Save failed';
+  }
+}
+
+async function syncBrain(){
+  const btn=document.getElementById('syncBtn'),st=document.getElementById('saveSt');
+  btn.disabled=true;
+  st.className='savest saving'; st.textContent='Syncing to Brain...';
+  try{
+    const r=await fetch('/api/sync-brain',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(S)
+    });
+    if(r.ok){
+      st.className='savest saved';
+      st.textContent=`Brain synced · ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
+    } else {
+      st.className='savest err'; st.textContent='Brain sync failed';
+    }
+  }catch(e){
+    st.className='savest err'; st.textContent='Brain sync failed';
+  }
   btn.disabled=false;
 }
 
